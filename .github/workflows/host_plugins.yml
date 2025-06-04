@@ -3,7 +3,7 @@ name: Publish Plugins
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch: 
 jobs:
   Publish:
