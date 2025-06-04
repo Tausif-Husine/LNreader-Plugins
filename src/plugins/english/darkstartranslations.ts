@@ -28,6 +28,8 @@ const sanitizeCoverUrl = (site: string, coverUrl?: string | null): string => {
     return 'https:' + coverUrl;
   }
   if (coverUrl.startsWith('/')) {
+    // Ensure it's not already a full URL if site also ends with / and path starts with /
+    if (coverUrl.startsWith(site)) return coverUrl;
     return site + coverUrl;
   }
   if (coverUrl.startsWith('http')) {
@@ -75,13 +77,12 @@ const genresList = [
   { label: 'Yuri', value: 'yuri' },
 ];
 
-// Hardcoded tags (a selection, can be expanded)
 const tagsList = [
   { label: 'Academy', value: 'academy' },
   { label: 'Cultivation', value: 'cultivation' },
   { label: 'Reincarnation', value: 'reincarnation' },
   { label: 'Transmigration', value: 'transmigration' },
-  { label: 'System', value: 'game-elements' }, // 'game-elements' slug often represents system
+  { label: 'System', value: 'game-elements' },
   { label: 'Weak to Strong', value: 'weak-to-strong' },
   { label: 'Overpowered Protagonist', value: 'overpowered-protagonist' },
   { label: 'Male Protagonist', value: 'male-protagonist' },
@@ -100,9 +101,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   filters: Filters = {
     sortBy: {
       label: 'Sort By',
-      value: 'updated_at|desc', // Default value
+      value: 'updated|desc', // Corrected default value
       options: [
-        { label: 'Recently Updated', value: 'updated_at|desc' },
+        { label: 'Recently Updated', value: 'updated|desc' }, // Corrected value
         { label: 'Most Popular', value: 'bookmarks_count|desc' },
         { label: 'A-Z', value: 'title|asc' },
         { label: 'Z-A', value: 'title|desc' },
@@ -124,8 +125,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       type: FilterTypes.CheckboxGroup,
     }
   } satisfies Filters;
-
-  // Overriding resolveUrl as paths are already full relative paths
+  
   resolveUrl = (path: string) => this.site + path;
 
   async popularNovels(
@@ -157,7 +157,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       if (filters) {
         const { sortBy, genres, tags } = filters;
         if (sortBy?.value) {
-          const [sortParam, orderParam] = sortBy.value.split('|');
+          const [sortParam, orderParam] = (sortBy.value as string).split('|');
           url += `&sort=${sortParam}&order=${orderParam}`;
         }
         if (genres?.value?.length) {
@@ -167,7 +167,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
           url += `&tags=${(tags.value as string[]).join(',')}`;
         }
       }
-
+      
       const props = await getPageProps(url);
       const seriesList = props.seriesList?.data;
 
@@ -198,9 +198,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       path: novelPath,
       name: series.title || 'Untitled',
       cover: sanitizeCoverUrl(this.site, series.cover?.url || series.coverImage),
-      summary: series.description || '',
+      summary: series.description ? loadCheerio(series.description).text() : '', // Basic HTML removal
       author: (series.user?.name === 'DarkStarTL' || series.user?.name === 'GalaxyTL') ? 'DarkStar Translations' : series.user?.name || 'Unknown',
-      artist: null, // Not available
+      artist: null,
       status: this.mapNovelStatus(series.story_state),
       genres: series.genres?.map((g: any) => g.name).join(', ') || '',
     };
@@ -208,7 +208,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     const chapters: Plugin.ChapterItem[] = [];
     if (series.chapters && Array.isArray(series.chapters)) {
       series.chapters.forEach((ch: any) => {
-        if (ch.slug && (ch.name || ch.title)) {
+        if (ch.slug && (ch.name || ch.title || ch.number)) {
           chapters.push({
             name: ch.name || ch.title || `Chapter ${ch.number}`,
             path: `/series/${series.slug}/${ch.slug}`,
@@ -218,13 +218,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
         }
       });
     }
-    // Chapters are often paginated or fetched via API on novel page interaction
-    // The initial props.series.chapters might be limited.
-    // If there's a "totalChapters" field and it's more than props.series.chapters.length,
-    // we might need to fetch all chapters via the series chapters API endpoint if available
-    // Example: /series/{slug}/chapters might list all. For now, use what's provided.
-    // If the `props.series.chapters` is already sorted descending, reverse it for ascending order.
-    // The provided series_page.html shows chapters sorted descending by number.
+    
     novel.chapters = chapters.reverse(); 
 
     return novel;
@@ -237,7 +231,10 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     if (!chapter || !chapter.content) {
       throw new Error(`Failed to parse chapter content for ${chapterPath}`);
     }
-    return chapter.content;
+    // Remove potential ad divs added by the site within chapter content
+    const $ = loadCheerio(chapter.content);
+    $('div.ad-container').remove();
+    return $.html();
   }
 
   async searchNovels(
@@ -270,7 +267,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       case 'ongoing':
         return NovelStatus.Ongoing;
       case 'completed':
-      case 'end':
+      case 'end': // As seen in "I Reincarnated into a Game Filled with Mods"
         return NovelStatus.Completed;
       case 'hiatus':
         return NovelStatus.OnHiatus;
