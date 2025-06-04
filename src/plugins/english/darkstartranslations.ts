@@ -126,7 +126,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
 
     if (showLatestNovels) {
       const props = await getPageProps(this.site);
-      const latestUpdates = props.latestUpdates?.data;
+      const latestUpdates = props.seriesList?.data;
 
       if (latestUpdates && Array.isArray(latestUpdates)) {
         latestUpdates.forEach((item: any) => {
