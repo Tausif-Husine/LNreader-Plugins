@@ -147,7 +147,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
 
       if (activeFilters.sortBy?.value) {
         const [sortParam, orderParam] = (activeFilters.sortBy.value as string).split('|');
-        url += `order=${orderParam}&page={pageNo}&sort=${sortParam}`;
+        url += `order=${orderParam}&page=${pageNo}&sort=${sortParam}`;
       }
       if (activeFilters.genres?.value?.length) {
         url += `&genres=${(activeFilters.genres.value as string[]).join(',')}`;
