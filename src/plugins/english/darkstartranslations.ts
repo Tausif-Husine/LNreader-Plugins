@@ -125,11 +125,12 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     await delay(1000); // delay before request
 
     if (showLatestNovels) {
-      const props = await getPageProps(this.site);
-      const latestUpdates = props.seriesList?.data;
+      let url = `{this.site}/series?order=desc&page=${pageNo}&sort=new`;
+      const props = await getPageProps(this.url);
+      const seriesList = props.seriesList?.data;
 
-      if (latestUpdates && Array.isArray(latestUpdates)) {
-        latestUpdates.forEach((item: any) => {
+      if (seriesList && Array.isArray(seriesList)) {
+        seriesList.forEach((item: any) => {
           if (item.series_slug && item.title) {
             novels.push({
               name: item.title,
