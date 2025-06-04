@@ -28,8 +28,7 @@ const sanitizeCoverUrl = (site: string, coverUrl?: string | null): string => {
     return 'https:' + coverUrl;
   }
   if (coverUrl.startsWith('/')) {
-    // Ensure it's not already a full URL if site also ends with / and path starts with /
-    if (coverUrl.startsWith(site)) return coverUrl;
+     if (coverUrl.startsWith(site)) return coverUrl; // Already absolute
     return site + coverUrl;
   }
   if (coverUrl.startsWith('http')) {
@@ -38,52 +37,31 @@ const sanitizeCoverUrl = (site: string, coverUrl?: string | null): string => {
   return defaultCover;
 };
 
-// Hardcoded genres based on browse_all__page.html -> props.genres
 const genresList = [
-  { label: 'Action', value: 'action' },
-  { label: 'Adult', value: 'adult' },
-  { label: 'Adventure', value: 'adventure' },
-  { label: 'Comedy', value: 'comedy' },
-  { label: 'Drama', value: 'drama' },
-  { label: 'Ecchi', value: 'ecchi' },
-  { label: 'Fantasy', value: 'fantasy' },
-  { label: 'Gender Bender', value: 'gender-bender' },
-  { label: 'Harem', value: 'harem' },
-  { label: 'Historical', value: 'historical' },
-  { label: 'Horror', value: 'horror' },
-  { label: 'Josei', value: 'josei' },
-  { label: 'Martial Arts', value: 'martial-arts' },
-  { label: 'Mature', value: 'mature' },
-  { label: 'Mecha', value: 'mecha' },
-  { label: 'Mystery', value: 'mystery' },
-  { label: 'Psychological', value: 'psychological' },
-  { label: 'Romance', value: 'romance' },
-  { label: 'School Life', value: 'school-life' },
-  { label: 'Sci-fi', value: 'sci-fi' },
-  { label: 'Seinen', value: 'seinen' },
-  { label: 'Shoujo', value: 'shoujo' },
-  { label: 'Shoujo Ai', value: 'shoujo-ai' },
-  { label: 'Shounen', value: 'shounen' },
-  { label: 'Shounen Ai', value: 'shounen-ai' },
-  { label: 'Slice of Life', value: 'slice-of-life' },
-  { label: 'Smut', value: 'smut' },
-  { label: 'Sports', value: 'sports' },
-  { label: 'Supernatural', value: 'supernatural' },
-  { label: 'Tragedy', value: 'tragedy' },
-  { label: 'Wuxia', value: 'wuxia' },
-  { label: 'Xianxia', value: 'xianxia' },
-  { label: 'Xuanhuan', value: 'xuanhuan' },
-  { label: 'Yaoi', value: 'yaoi' },
+  { label: 'Action', value: 'action' }, { label: 'Adult', value: 'adult' },
+  { label: 'Adventure', value: 'adventure' }, { label: 'Comedy', value: 'comedy' },
+  { label: 'Drama', value: 'drama' }, { label: 'Ecchi', value: 'ecchi' },
+  { label: 'Fantasy', value: 'fantasy' }, { label: 'Gender Bender', value: 'gender-bender' },
+  { label: 'Harem', value: 'harem' }, { label: 'Historical', value: 'historical' },
+  { label: 'Horror', value: 'horror' }, { label: 'Josei', value: 'josei' },
+  { label: 'Martial Arts', value: 'martial-arts' }, { label: 'Mature', value: 'mature' },
+  { label: 'Mecha', value: 'mecha' }, { label: 'Mystery', value: 'mystery' },
+  { label: 'Psychological', value: 'psychological' }, { label: 'Romance', value: 'romance' },
+  { label: 'School Life', value: 'school-life' }, { label: 'Sci-fi', value: 'sci-fi' },
+  { label: 'Seinen', value: 'seinen' }, { label: 'Shoujo', value: 'shoujo' },
+  { label: 'Shoujo Ai', value: 'shoujo-ai' }, { label: 'Shounen', value: 'shounen' },
+  { label: 'Shounen Ai', value: 'shounen-ai' }, { label: 'Slice of Life', value: 'slice-of-life' },
+  { label: 'Smut', value: 'smut' }, { label: 'Sports', value: 'sports' },
+  { label: 'Supernatural', value: 'supernatural' }, { label: 'Tragedy', value: 'tragedy' },
+  { label: 'Wuxia', value: 'wuxia' }, { label: 'Xianxia', value: 'xianxia' },
+  { label: 'Xuanhuan', value: 'xuanhuan' }, { label: 'Yaoi', value: 'yaoi' },
   { label: 'Yuri', value: 'yuri' },
 ];
 
 const tagsList = [
-  { label: 'Academy', value: 'academy' },
-  { label: 'Cultivation', value: 'cultivation' },
-  { label: 'Reincarnation', value: 'reincarnation' },
-  { label: 'Transmigration', value: 'transmigration' },
-  { label: 'System', value: 'game-elements' },
-  { label: 'Weak to Strong', value: 'weak-to-strong' },
+  { label: 'Academy', value: 'academy' }, { label: 'Cultivation', value: 'cultivation' },
+  { label: 'Reincarnation', value: 'reincarnation' }, { label: 'Transmigration', value: 'transmigration' },
+  { label: 'System', value: 'game-elements' }, { label: 'Weak to Strong', value: 'weak-to-strong' },
   { label: 'Overpowered Protagonist', value: 'overpowered-protagonist' },
   { label: 'Male Protagonist', value: 'male-protagonist' },
   { label: 'Female Protagonist', value: 'female-protagonist' },
@@ -96,14 +74,14 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   name = 'DarkStar Translations';
   icon = 'src/en/darkstartranslations/icon.png';
   site = 'https://darkstartranslations.com';
-  version = '1.0.0';
+  version = '1.0.2'; // Incremented patch for the fix
 
   filters: Filters = {
     sortBy: {
       label: 'Sort By',
-      value: 'updated|desc', // Corrected default value
+      value: 'updated|desc', 
       options: [
-        { label: 'Recently Updated', value: 'updated|desc' }, // Corrected value
+        { label: 'Recently Updated', value: 'updated|desc' }, 
         { label: 'Most Popular', value: 'bookmarks_count|desc' },
         { label: 'A-Z', value: 'title|asc' },
         { label: 'Z-A', value: 'title|desc' },
@@ -126,7 +104,12 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     }
   } satisfies Filters;
   
-  resolveUrl = (path: string) => this.site + path;
+  resolveUrl = (path: string) => {
+    if (path.startsWith('http')) {
+      return path;
+    }
+    return this.site + path;
+  }
 
   async popularNovels(
     pageNo: number,
@@ -153,19 +136,20 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
         });
       }
     } else {
-      let url = `${this.site}/series?page=${pageNo}`;
-      if (filters) {
-        const { sortBy, genres, tags } = filters;
-        if (sortBy?.value) {
-          const [sortParam, orderParam] = (sortBy.value as string).split('|');
-          url += `&sort=${sortParam}&order=${orderParam}`;
-        }
-        if (genres?.value?.length) {
-          url += `&genres=${(genres.value as string[]).join(',')}`;
-        }
-        if (tags?.value?.length) {
-          url += `&tags=${(tags.value as string[]).join(',')}`;
-        }
+      // Always include &search= as it seems to stabilize the page structure or handle redirects better
+      let url = `${this.site}/series?page=${pageNo}&search=`; 
+      
+      const activeFilters = filters || this.filters; // Use plugin's default filters if options.filters is not provided
+
+      if (activeFilters.sortBy?.value) {
+        const [sortParam, orderParam] = (activeFilters.sortBy.value as string).split('|');
+        url += `&sort=${sortParam}&order=${orderParam}`;
+      }
+      if (activeFilters.genres?.value?.length) {
+        url += `&genres=${(activeFilters.genres.value as string[]).join(',')}`;
+      }
+      if (activeFilters.tags?.value?.length) {
+        url += `&tags=${(activeFilters.tags.value as string[]).join(',')}`;
       }
       
       const props = await getPageProps(url);
@@ -198,7 +182,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       path: novelPath,
       name: series.title || 'Untitled',
       cover: sanitizeCoverUrl(this.site, series.cover?.url || series.coverImage),
-      summary: series.description ? loadCheerio(series.description).text() : '', // Basic HTML removal
+      summary: series.description ? loadCheerio(series.description).text() : '',
       author: (series.user?.name === 'DarkStarTL' || series.user?.name === 'GalaxyTL') ? 'DarkStar Translations' : series.user?.name || 'Unknown',
       artist: null,
       status: this.mapNovelStatus(series.story_state),
@@ -231,7 +215,6 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     if (!chapter || !chapter.content) {
       throw new Error(`Failed to parse chapter content for ${chapterPath}`);
     }
-    // Remove potential ad divs added by the site within chapter content
     const $ = loadCheerio(chapter.content);
     $('div.ad-container').remove();
     return $.html();
@@ -267,7 +250,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       case 'ongoing':
         return NovelStatus.Ongoing;
       case 'completed':
-      case 'end': // As seen in "I Reincarnated into a Game Filled with Mods"
+      case 'end': 
         return NovelStatus.Completed;
       case 'hiatus':
         return NovelStatus.OnHiatus;
