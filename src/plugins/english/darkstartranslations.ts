@@ -82,11 +82,10 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       value: 'updated|desc', 
       options: [
         { label: 'Recently Updated', value: 'updated|desc' }, 
-        { label: 'Most Popular', value: 'bookmarks_count|desc' },
         { label: 'A-Z', value: 'title|asc' },
         { label: 'Z-A', value: 'title|desc' },
-        { label: 'Newest', value: 'created_at|desc' },
-        { label: 'Oldest', value: 'created_at|asc' },
+        { label: 'Newest', value: 'new|desc' },
+        { label: 'Oldest', value: 'new|asc' },
       ],
       type: FilterTypes.Picker,
     },
@@ -137,13 +136,13 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       }
     } else {
       // Always include &search= as it seems to stabilize the page structure or handle redirects better
-      let url = `${this.site}/series?page=${pageNo}&search=`; 
+      let url = `${this.site}/series?`; 
       
       const activeFilters = filters || this.filters; // Use plugin's default filters if options.filters is not provided
 
       if (activeFilters.sortBy?.value) {
         const [sortParam, orderParam] = (activeFilters.sortBy.value as string).split('|');
-        url += `&sort=${sortParam}&order=${orderParam}`;
+        url += `order=${orderParam}&page&{pageNo}&search=&sort=${sortParam}`;
       }
       if (activeFilters.genres?.value?.length) {
         url += `&genres=${(activeFilters.genres.value as string[]).join(',')}`;
