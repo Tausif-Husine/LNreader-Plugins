@@ -6,6 +6,9 @@ import { defaultCover } from '@libs/defaultCover';
 import { NovelStatus } from '@libs/novelStatus';
 import dayjs from 'dayjs';
 
+// Helper function to add delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Helper function to parse the data-page JSON
 const getPageProps = async (url: string) => {
   const result = await fetchText(url);
@@ -74,7 +77,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   name = 'DarkStar Translations';
   icon = 'src/en/darkstartranslations/icon.png';
   site = 'https://darkstartranslations.com';
-  version = '1.0.2'; // Incremented patch for the fix
+  version = '1.0.0';
 
   filters: Filters = {
     sortBy: {
@@ -119,6 +122,8 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   ): Promise<Plugin.NovelItem[]> {
     const novels: Plugin.NovelItem[] = [];
 
+    await delay(1000); // delay before request
+
     if (showLatestNovels) {
       const props = await getPageProps(this.site);
       const latestUpdates = props.latestUpdates?.data;
@@ -142,7 +147,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
 
       if (activeFilters.sortBy?.value) {
         const [sortParam, orderParam] = (activeFilters.sortBy.value as string).split('|');
-        url += `order=${orderParam}&page&{pageNo}&search=&sort=${sortParam}`;
+        url += `order=${orderParam}&page={pageNo}&sort=${sortParam}`;
       }
       if (activeFilters.genres?.value?.length) {
         url += `&genres=${(activeFilters.genres.value as string[]).join(',')}`;
@@ -150,7 +155,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       if (activeFilters.tags?.value?.length) {
         url += `&tags=${(activeFilters.tags.value as string[]).join(',')}`;
       }
-      
+
+      await delay(1000); // delay before request
+
       const props = await getPageProps(url);
       const seriesList = props.seriesList?.data;
 
@@ -170,6 +177,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
+    await delay(1000); // delay before request
     const props = await getPageProps(this.site + novelPath);
     const series = props.series;
 
@@ -208,6 +216,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   }
 
   async parseChapter(chapterPath: string): Promise<string> {
+    await delay(1000); // delay before request
     const props = await getPageProps(this.site + chapterPath);
     const chapter = props.chapter;
 
@@ -226,6 +235,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     const url = `${this.site}/series?page=${pageNo}&search=${encodeURIComponent(
       searchTerm,
     )}`;
+
+    await delay(1000); // delay before request
+
     const props = await getPageProps(url);
     const novels: Plugin.NovelItem[] = [];
     const seriesList = props.seriesList?.data;
