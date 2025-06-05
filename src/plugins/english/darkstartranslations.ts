@@ -6,7 +6,7 @@ import { defaultCover } from '@libs/defaultCover';
 import { NovelStatus } from '@libs/novelStatus';
 import dayjs from 'dayjs';
 
-// Helper function to parse the data-page JSON
+// Helper function to parse the data-page JSON (still needed for main novel details)
 const getPageProps = async (url: string) => {
   const result = await fetchText(url);
   const cheerio = loadCheerio(result);
@@ -73,7 +73,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   name = 'DarkStar Translations';
   icon = 'src/en/darkstartranslations/icon.png';
   site = 'https://darkstartranslations.com';
-  version = '1.0.1'; // Incremented patch version
+  version = '1.0.2'; // Incremented patch version for new chapter fetching logic
 
   filters: Filters = {
     sortBy: {
@@ -170,8 +170,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
-    const props = await getPageProps(this.site + novelPath);
-    const series = props.series;
+    // Step 1: Get novel details from the main page
+    const initialProps = await getPageProps(this.site + novelPath);
+    const series = initialProps.series;
 
     if (!series || !series.slug) {
       throw new Error(`Failed to parse novel data or series slug for ${novelPath}`);
@@ -188,52 +189,35 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       genres: series.genres?.map((g: any) => g.name).join(', ') || '',
     };
 
-    const chapters: Plugin.ChapterItem[] = [];
-    const existingChaptersMap = new Map<number, any>();
-    let maxChapterNumber = 0;
+    // Step 2: Fetch all chapters from the dedicated API endpoint
+    // novelPath is like /series/series-name, which is what we need for the API
+    const chaptersAPIUrl = `${this.site}${novelPath}/chapters?sort_order=desc`;
+    const chaptersJsonText = await fetchText(chaptersAPIUrl);
+    const chaptersData = JSON.parse(chaptersJsonText);
 
-    // Process chapters provided by the server to find the max chapter number
-    // and store existing chapter data (name, actual slug, release time).
-    if (series.chapters && Array.isArray(series.chapters)) {
-      series.chapters.forEach((ch: any) => {
-        if (typeof ch.number === 'number' && ch.slug) {
-          existingChaptersMap.set(ch.number, ch);
-          if (ch.number > maxChapterNumber) {
-            maxChapterNumber = ch.number;
+    const chapters: Plugin.ChapterItem[] = [];
+    if (chaptersData && chaptersData.chapters && Array.isArray(chaptersData.chapters)) {
+      chaptersData.chapters.forEach((ch: any) => {
+        if (ch.slug && (ch.name || ch.title || ch.number)) {
+          let chapterName = ch.name || ch.title || `Chapter ${ch.number}`;
+          // Add lock emoji if chapter is premium
+          if (ch.is_premium === true) {
+            chapterName = '🔒 ' + chapterName;
           }
+
+          chapters.push({
+            name: chapterName,
+            // Use the 'slug' from the API for the chapter path, as it's more reliable
+            path: `/series/${series.slug}/${ch.slug}`,
+            releaseTime: ch.created_at ? dayjs(ch.created_at).format('YYYY-MM-DD HH:mm') : null,
+            chapterNumber: typeof ch.number === 'number' ? ch.number : undefined,
+          });
         }
       });
     }
-
-    // If chapters were found (i.e., maxChapterNumber > 0), generate the full list.
-    if (maxChapterNumber > 0) {
-      for (let i = 1; i <= maxChapterNumber; i++) {
-        const existingChapterData = existingChaptersMap.get(i);
-        if (existingChapterData) {
-          // This chapter was in the initial data load. Use its details.
-          const ch = existingChapterData;
-          chapters.push({
-            name: ch.name || ch.title || `Chapter ${ch.number}`,
-            // Path is constructed using ch.number based on site's URL structure
-            path: `/series/${series.slug}/${ch.number}`, 
-            releaseTime: ch.created_at ? dayjs(ch.created_at).format('YYYY-MM-DD HH:mm') : null,
-            chapterNumber: ch.number,
-          });
-        } else {
-          // This chapter was not in the initial data (it's an older one).
-          // Create a placeholder, assuming its path can be formed with the chapter number.
-          chapters.push({
-            name: `Chapter ${i}`,
-            path: `/series/${series.slug}/${i}`,
-            releaseTime: null, // Release time is unknown for these inferred chapters
-            chapterNumber: i,
-          });
-        }
-      }
-    }
     
-    // Chapters are generated in ascending order (1, 2, ..., N).
-    // Reversing them makes the list (N, ..., 2, 1), common for display (latest first).
+    // The API returns chapters in descending order (latest first, e.g., 284, 283, ...).
+    // To store them in chronological order (oldest first, e.g., 1, 2, ...), we reverse the list.
     novel.chapters = chapters.reverse(); 
 
     return novel;
@@ -247,7 +231,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       throw new Error(`Failed to parse chapter content for ${chapterPath}`);
     }
     const $ = loadCheerio(chapter.content);
-    $('div.ad-container').remove(); // Remove ad containers
+    $('div.ad-container').remove();
     return $.html();
   }
 
