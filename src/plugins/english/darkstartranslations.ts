@@ -6,9 +6,6 @@ import { defaultCover } from '@libs/defaultCover';
 import { NovelStatus } from '@libs/novelStatus';
 import dayjs from 'dayjs';
 
-// Helper function to add delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 // Helper function to parse the data-page JSON
 const getPageProps = async (url: string) => {
   const result = await fetchText(url);
@@ -31,7 +28,6 @@ const sanitizeCoverUrl = (site: string, coverUrl?: string | null): string => {
     return 'https:' + coverUrl;
   }
   if (coverUrl.startsWith('/')) {
-     if (coverUrl.startsWith(site)) return coverUrl; // Already absolute
     return site + coverUrl;
   }
   if (coverUrl.startsWith('http')) {
@@ -77,7 +73,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   name = 'DarkStar Translations';
   icon = 'src/en/darkstartranslations/icon.png';
   site = 'https://darkstartranslations.com';
-  version = '1.0.0';
+  version = '1.0.1'; // Incremented patch version
 
   filters: Filters = {
     sortBy: {
@@ -121,12 +117,11 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     }: Plugin.PopularNovelsOptions<typeof this.filters>,
   ): Promise<Plugin.NovelItem[]> {
     const novels: Plugin.NovelItem[] = [];
-
-    await delay(1000); // delay before request
+    let url = ''; 
 
     if (showLatestNovels) {
-      let url = `{this.site}/series?order=desc&page=${pageNo}&sort=new`;
-      const props = await getPageProps(this.url);
+      url = `${this.site}/series?order=desc&page=${pageNo}&sort=new`;
+      const props = await getPageProps(url);
       const seriesList = props.seriesList?.data;
 
       if (seriesList && Array.isArray(seriesList)) {
@@ -141,10 +136,9 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
         });
       }
     } else {
-      // Always include &search= as it seems to stabilize the page structure or handle redirects better
-      let url = `${this.site}/series?`; 
+      url = `${this.site}/series?`; 
       
-      const activeFilters = filters || this.filters; // Use plugin's default filters if options.filters is not provided
+      const activeFilters = filters || this.filters; 
 
       if (activeFilters.sortBy?.value) {
         const [sortParam, orderParam] = (activeFilters.sortBy.value as string).split('|');
@@ -156,8 +150,6 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       if (activeFilters.tags?.value?.length) {
         url += `&tags=${(activeFilters.tags.value as string[]).join(',')}`;
       }
-
-      await delay(1000); // delay before request
 
       const props = await getPageProps(url);
       const seriesList = props.seriesList?.data;
@@ -178,12 +170,11 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
-    await delay(1000); // delay before request
     const props = await getPageProps(this.site + novelPath);
     const series = props.series;
 
-    if (!series) {
-      throw new Error(`Failed to parse novel data for ${novelPath}`);
+    if (!series || !series.slug) {
+      throw new Error(`Failed to parse novel data or series slug for ${novelPath}`);
     }
 
     const novel: Plugin.SourceNovel = {
@@ -198,26 +189,57 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     };
 
     const chapters: Plugin.ChapterItem[] = [];
+    const existingChaptersMap = new Map<number, any>();
+    let maxChapterNumber = 0;
+
+    // Process chapters provided by the server to find the max chapter number
+    // and store existing chapter data (name, actual slug, release time).
     if (series.chapters && Array.isArray(series.chapters)) {
       series.chapters.forEach((ch: any) => {
-        if (ch.slug && (ch.name || ch.title || ch.number)) {
-          chapters.push({
-            name: ch.name || ch.title || `Chapter ${ch.number}`,
-            path: `/series/${series.slug}/${ch.slug}`,
-            releaseTime: ch.created_at ? dayjs(ch.created_at).format('YYYY-MM-DD HH:mm') : null,
-            chapterNumber: typeof ch.number === 'number' ? ch.number : undefined,
-          });
+        if (typeof ch.number === 'number' && ch.slug) {
+          existingChaptersMap.set(ch.number, ch);
+          if (ch.number > maxChapterNumber) {
+            maxChapterNumber = ch.number;
+          }
         }
       });
     }
+
+    // If chapters were found (i.e., maxChapterNumber > 0), generate the full list.
+    if (maxChapterNumber > 0) {
+      for (let i = 1; i <= maxChapterNumber; i++) {
+        const existingChapterData = existingChaptersMap.get(i);
+        if (existingChapterData) {
+          // This chapter was in the initial data load. Use its details.
+          const ch = existingChapterData;
+          chapters.push({
+            name: ch.name || ch.title || `Chapter ${ch.number}`,
+            // Path is constructed using ch.number based on site's URL structure
+            path: `/series/${series.slug}/${ch.number}`, 
+            releaseTime: ch.created_at ? dayjs(ch.created_at).format('YYYY-MM-DD HH:mm') : null,
+            chapterNumber: ch.number,
+          });
+        } else {
+          // This chapter was not in the initial data (it's an older one).
+          // Create a placeholder, assuming its path can be formed with the chapter number.
+          chapters.push({
+            name: `Chapter ${i}`,
+            path: `/series/${series.slug}/${i}`,
+            releaseTime: null, // Release time is unknown for these inferred chapters
+            chapterNumber: i,
+          });
+        }
+      }
+    }
     
+    // Chapters are generated in ascending order (1, 2, ..., N).
+    // Reversing them makes the list (N, ..., 2, 1), common for display (latest first).
     novel.chapters = chapters.reverse(); 
 
     return novel;
   }
 
   async parseChapter(chapterPath: string): Promise<string> {
-    await delay(1000); // delay before request
     const props = await getPageProps(this.site + chapterPath);
     const chapter = props.chapter;
 
@@ -225,7 +247,7 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       throw new Error(`Failed to parse chapter content for ${chapterPath}`);
     }
     const $ = loadCheerio(chapter.content);
-    $('div.ad-container').remove();
+    $('div.ad-container').remove(); // Remove ad containers
     return $.html();
   }
 
@@ -236,8 +258,6 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
     const url = `${this.site}/series?page=${pageNo}&search=${encodeURIComponent(
       searchTerm,
     )}`;
-
-    await delay(1000); // delay before request
 
     const props = await getPageProps(url);
     const novels: Plugin.NovelItem[] = [];
