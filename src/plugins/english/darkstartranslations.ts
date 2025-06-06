@@ -57,17 +57,6 @@ const genresList = [
   { label: 'Yuri', value: 'yuri' },
 ];
 
-const tagsList = [
-  { label: 'Academy', value: 'academy' }, { label: 'Cultivation', value: 'cultivation' },
-  { label: 'Reincarnation', value: 'reincarnation' }, { label: 'Transmigration', value: 'transmigration' },
-  { label: 'System', value: 'game-elements' }, { label: 'Weak to Strong', value: 'weak-to-strong' },
-  { label: 'Overpowered Protagonist', value: 'overpowered-protagonist' },
-  { label: 'Male Protagonist', value: 'male-protagonist' },
-  { label: 'Female Protagonist', value: 'female-protagonist' },
-  { label: 'Villainess', value: 'villainess-noble-girls'},
-];
-
-
 class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   id = 'darkstartranslations';
   name = 'DarkStar Translations';
@@ -94,12 +83,6 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       options: genresList,
       type: FilterTypes.CheckboxGroup,
     },
-    tags: {
-      label: 'Tags',
-      value: [],
-      options: tagsList,
-      type: FilterTypes.CheckboxGroup,
-    }
   } satisfies Filters;
   
   resolveUrl = (path: string) => {
@@ -146,9 +129,6 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
       }
       if (activeFilters.genres?.value?.length) {
         url += `&genres=${(activeFilters.genres.value as string[]).join(',')}`;
-      }
-      if (activeFilters.tags?.value?.length) {
-        url += `&tags=${(activeFilters.tags.value as string[]).join(',')}`;
       }
 
       const props = await getPageProps(url);
