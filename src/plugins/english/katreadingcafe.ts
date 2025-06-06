@@ -225,26 +225,29 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
     
     async parseChapter(chapterPath: string): Promise<string> {
         const fullChapterUrl = this.resolveUrl(chapterPath);
-        const result = await fetchApi(fullChapterUrl); 
+        const result = await fetchApi(fullChapterUrl);
         const body = await result.text();
         const $ = loadCheerio(body);
     
-        const chapterHtml = $('.epcontent.entry-content');
+        const chapterContent = $('.epcontent.entry-content');
         
-        chapterHtml.find('h1.entry-title').remove();
-        chapterHtml.find('.kofi-button-container').remove(); 
-        chapterHtml.find('div[class*="kofi-"]').remove();
-        chapterHtml.find('center').filter((i, el) => $(el).find('a[href*="ko-fi.com"]').length > 0).remove();
-        chapterHtml.find('span[style*="position: absolute"]').remove();
-        chapterHtml.find('comment()').remove();
-
-        chapterHtml.find('p').each((i, el) => {
+        if (!chapterContent.length) {
+            return '';
+        }
+    
+        chapterContent.find('h1').remove();
+        chapterContent.find('.kofi-button-container, div[class*="kofi-"]').remove();
+        chapterContent.find('center').filter((i, el) => $(el).find('a[href*="ko-fi.com"]').length > 0).remove();
+        chapterContent.find('span[style*="height: 0"][style*="width: 0"]').remove();     
+        chapterContent.contents().filter((_, node) => node.type === 'comment').remove();
+    
+        chapterContent.find('p').each((i, el) => {
             if ($(el).text().trim() === '' && $(el).children().length === 0) {
                 $(el).remove();
             }
         });
         
-        return chapterHtml.html() || "";
+        return chapterContent.html() || "";
     }
 
     async searchNovels(
