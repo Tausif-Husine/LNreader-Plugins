@@ -148,14 +148,13 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
         $('.sertoinfo .sertoauth .serl').each(function () {
             const label = $(this).find('.sername').text().trim();
             const value = $(this).find('.serval').text().trim();
-            const valueLink = $(this).find('.serval a').text().trim();
 
             if (label === 'Author') {
                 novel.author = valueLink || value;
             }
             // Artist field can be added if relevant
             // if (label === 'Artist') {
-            //    novel.artist = valueLink || value;
+            //    novel.artist = value;
             // }
         });
         
@@ -175,7 +174,7 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
         }
     
         novel.genres = $('.sertogenre a').map((i, el) => $(el).text().trim()).get().join(', ');
-        novel.summary = $('.sersys.entry-content').text().trim(); // Using .text() to get clean summary
+        novel.summary = $('.sersys entry-content').text().trim(); // Using .text() to get clean summary
     
         const chapters: Plugin.ChapterItem[] = [];
         $('.eplister ul li').each((i, element) => {
@@ -204,7 +203,7 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
 
             chapters.push({
                 name: chapterName,
-                url: chapterUrl,
+                path: chapterUrl,
                 releaseTime: releaseTime, // Can be parsed with dayjs if needed: dayjs(releaseTime, "MMMM D, YYYY").toISOString()
                 chapterNumber: chapterNumber 
             });
