@@ -4,7 +4,7 @@ import { FilterTypes, Filters } from '@libs/filterInputs';
 import { load as loadCheerio } from 'cheerio';
 import { defaultCover } from '@libs/defaultCover';
 import { NovelStatus } from '@libs/novelStatus';
-// import dayjs from 'dayjs'; 
+import dayjs from 'dayjs';
 
 class KatReadingCafePlugin implements Plugin.PluginBase {
     id = "katreadingcafe";
@@ -12,6 +12,13 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
     icon = "src/en/katreadingcafe/icon.png";
     site = "https://katreadingcafe.com";
     version = "1.0.0";
+
+    resolveUrl = (path: string) => {
+        if (path.startsWith('http')) {
+            return path;
+        }
+        return this.site + path;
+    };
 
     filters: Filters = {
         order: {
@@ -69,32 +76,31 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
 
     async popularNovels(
         pageNo: number,
-        options: Plugin.PopularNovelsOptions<typeof this.filters>,
+        { showLatestNovels, filters }: Plugin.PopularNovelsOptions<typeof this.filters>,
     ): Promise<Plugin.NovelItem[]> {
         let baseUrl = this.site + '/series/';
-        let pagedUrl = baseUrl; // Renamed for clarity
+        let pagedUrl = baseUrl;
         if (pageNo > 1) {
             pagedUrl = baseUrl + `page/${pageNo}/`;
         }
 
         const params = new URLSearchParams();
-        if (options.showLatestNovels) {
+        if (showLatestNovels) {
             params.append('order', 'update'); 
-        } else {
-            if (options.filters.order.value) {
-                params.append('order', options.filters.order.value);
-            }
-        }
-        if (options.filters.status.value) {
-            params.append('status', options.filters.status.value);
+        } else if (filters.order.value) {
+            params.append('order', filters.order.value);
         }
         
-        const typeFFilterValue = options.filters.typeF?.value;
+        if (filters.status.value) {
+            params.append('status', filters.status.value);
+        }
+        
+        const typeFFilterValue = filters.typeF?.value;
         if (Array.isArray(typeFFilterValue)) {
             typeFFilterValue.forEach(type => params.append('type[]', type));
         }
 
-        const genreFilterValue = options.filters.genre?.value;
+        const genreFilterValue = filters.genre?.value;
         if (Array.isArray(genreFilterValue)) {
             genreFilterValue.forEach(genre => params.append('genre[]', genre));
         }
@@ -113,12 +119,12 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
         $('div.listupd article.maindet').each((i, element) => {
             const novelUrl = $(element).find('.mdthumb a').attr('href');
             const novelName = $(element).find('.mdinfo h2 a').text().trim();
-            let novelCover = $(element).find('.mdthumb a img').attr('src');
+            const novelCover = $(element).find('.mdthumb a img').attr('src');
 
-            if (novelUrl && novelName) { // Ensure novelName is also present
+            if (novelUrl && novelName) {
                  novels.push({
                     name: novelName,
-                    url: novelUrl, 
+                    path: new URL(novelUrl).pathname, 
                     cover: novelCover ? new URL(novelCover, this.site).href : defaultCover,
                 });
             }
@@ -126,40 +132,30 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
         return novels;
     }
 
-    async parseNovelAndChapters(novelUrl: string): Promise<Plugin.SourceNovel> {
-        const result = await fetchApi(novelUrl);
+    async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
+        const fullNovelUrl = this.resolveUrl(novelPath);
+        const result = await fetchApi(fullNovelUrl);
         const body = await result.text();
         const $ = loadCheerio(body);
     
         const novel: Plugin.SourceNovel = {
-            url: novelUrl,
-            name: "Untitled",
-            cover: defaultCover,
-            author: "",
-            artist: "",
+            path: novelPath,
+            name: $('h1.entry-title').text().trim() || "Untitled",
+            cover: $('.sertothumb img').attr('src') ? new URL($('.sertothumb img').attr('src')!, this.site).href : defaultCover,
+            author: null,
+            artist: null,
             status: NovelStatus.Unknown,
-            genres: "",
-            summary: "",
+            genres: $('.sertogenre a').map((i, el) => $(el).text().trim()).get().join(', '),
+            summary: $('.sersys.entry-content').text().trim(),
             chapters: [],
         };
 
-        const parsedName = $('h1.entry-title').text().trim();
-        if (parsedName) {
-            novel.name = parsedName;
-        }
-    
-        const coverSrc = $('.sertothumb img').attr('src');
-        if (coverSrc) {
-            novel.cover = new URL(coverSrc, this.site).href;
-        }
-    
         $('.sertoinfo .sertoauth .serl').each(function () {
             const label = $(this).find('.sername').text().trim();
-            const valueElem = $(this).find('.serval');
-            const value = valueElem.text().trim();
+            const value = $(this).find('.serval').text().trim();
 
             if (label === 'Author') {
-                novel.author = value || ""; 
+                novel.author = value || null; 
             }
         });
         
@@ -172,18 +168,8 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
                 novel.status = NovelStatus.Completed;
                 break;
             case 'hiatus':
-                novel.status = NovelStatus.Hiatus; // Changed to OnHiatus for consistency with NovelStatus enum
+                novel.status = NovelStatus.OnHiatus;
                 break;
-        }
-    
-        const parsedGenres = $('.sertogenre a').map((i, el) => $(el).text().trim()).get().join(', ');
-        if (parsedGenres) {
-             novel.genres = parsedGenres;
-        }
-
-        const parsedSummary = $('.sersys.entry-content').text().trim();
-        if (parsedSummary) {
-            novel.summary = parsedSummary;
         }
     
         const chapters: Plugin.ChapterItem[] = [];
@@ -196,9 +182,15 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
             const titleText = chapterA.find('.epl-title').text().trim();
             const releaseTime = chapterA.find('.epl-date').text().trim();
 
-            let chapterName = numText;
-            if (titleText) {
-                chapterName = `${numText} - ${titleText}`;
+            let chapterName = titleText ? `${numText} - ${titleText}` : numText;
+
+            let parsedReleaseTime: string | null = null;
+            if (releaseTime) {
+                try {
+                    parsedReleaseTime = dayjs(releaseTime, "MMMM D, YYYY").toISOString();
+                } catch (e) {
+                    parsedReleaseTime = releaseTime;
+                }
             }
             
             let parsedChapterNumber: number | undefined = undefined;
@@ -206,9 +198,9 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
             const chNumMatchVolume = numText.match(/Vol\.?\s*\d+\s*Ch\.?\s*(\d+(\.\d+)?)/i);
 
             let tempNumStr: string | undefined;
-            if (chNumMatchVolume && chNumMatchVolume[1]) {
+            if (chNumMatchVolume?.[1]) {
                 tempNumStr = chNumMatchVolume[1];
-            } else if (chNumMatchSimple && chNumMatchSimple[1]) {
+            } else if (chNumMatchSimple?.[1]) {
                 tempNumStr = chNumMatchSimple[1];
             }
 
@@ -221,19 +213,19 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
 
             chapters.push({
                 name: chapterName,
-                url: chapterUrl,
-                releaseTime: releaseTime, // Consider parsing with dayjs: dayjs(releaseTime, "MMMM D, YYYY").toISOString()
+                path: new URL(chapterUrl).pathname,
+                releaseTime: parsedReleaseTime,
                 chapterNumber: parsedChapterNumber,
             });
         });
     
         novel.chapters = chapters.reverse(); 
-    
         return novel;
     }
     
-    async parseChapter(chapterUrl: string): Promise<string> {
-        const result = await fetchApi(chapterUrl); 
+    async parseChapter(chapterPath: string): Promise<string> {
+        const fullChapterUrl = this.resolveUrl(chapterPath);
+        const result = await fetchApi(fullChapterUrl); 
         const body = await result.text();
         const $ = loadCheerio(body);
     
@@ -272,12 +264,12 @@ class KatReadingCafePlugin implements Plugin.PluginBase {
         $('div.listupd article.maindet').each((i, element) => {
             const novelUrl = $(element).find('.mdthumb a').attr('href');
             const novelName = $(element).find('.mdinfo h2 a').text().trim();
-            let novelCover = $(element).find('.mdthumb a img').attr('src');
+            const novelCover = $(element).find('.mdthumb a img').attr('src');
 
-            if (novelUrl && novelName) { // Ensure novelName is also present
+            if (novelUrl && novelName) {
                  novels.push({
                     name: novelName,
-                    url: novelUrl,
+                    path: new URL(novelUrl).pathname,
                     cover: novelCover ? new URL(novelCover, this.site).href : defaultCover,
                 });
             }
