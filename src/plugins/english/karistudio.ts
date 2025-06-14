@@ -237,15 +237,13 @@ class KariStudio implements Plugin.PluginBase {
 
     // Remove premium/login prompts
     $(".mycred-sell-this-wrapper").remove();
-    
-    const chapterContent = $(".chapter-content");
 
-    // Remove ads and other unwanted elements that might be injected.
-    chapterContent.find("div[class*='code-block'], div[id*='ezoic']").remove();
+    const chapterText = $("p.chapter_content")
+      .map((i, el) => `<p>${$(el).html()}</p>`)
+      .get()
+      .join("");
 
-    const chapterText = chapterContent.html();
-
-    return chapterText || "";
+    return chapterText;
   }
 
   async searchNovels(
