@@ -11,7 +11,7 @@ class KariStudio implements Plugin.PluginBase {
   site = "https://karistudio.com";
   version = "1.0.0";
 
-  filters: Filters = {
+    filters: Filters = {
     order: {
       label: "Sort by",
       value: "",
@@ -22,32 +22,6 @@ class KariStudio implements Plugin.PluginBase {
         { label: "Oldest", value: "date_asc" },
         { label: "Title A-Z", value: "title_asc" },
         { label: "Title Z-A", value: "title_desc" },
-        { label: "Ranking - Best", value: "ranking-best" },
-        { label: "Ranking - Popularity", value: "ranking-popularity" },
-        { label: "Ranking - Monthly", value: "ranking-monthly" },
-        { label: "Ranking - Rising", value: "ranking-new" },
-        { label: "Ranking - Completed", value: "ranking-completed" },
-      ],
-      type: FilterTypes.Picker,
-    },
-    type: {
-      label: "Type",
-      value: "",
-      options: [
-        { label: "All", value: "" },
-        { label: "Translation", value: "Translation" },
-        { label: "Original", value: "Original" },
-      ],
-      type: FilterTypes.Picker,
-    },
-    language: {
-      label: "Language",
-      value: "",
-      options: [
-        { label: "All", value: "" },
-        { label: "Korean", value: "Korean" },
-        { label: "Japanese", value: "Japanese" },
-        { label: "Chinese", value: "Chinese" },
       ],
       type: FilterTypes.Picker,
     },
@@ -64,7 +38,7 @@ class KariStudio implements Plugin.PluginBase {
       type: FilterTypes.Picker,
     },
     tag: {
-      label: "Theme",
+      label: "Genre",
       value: "",
       options: [
         { label: "All", value: "" },
@@ -93,7 +67,8 @@ class KariStudio implements Plugin.PluginBase {
         { label: "Gacha Game", value: "gacha-game" },
         { label: "Game World", value: "game-world" },
         { label: "Gaming", value: "gaming" },
-        { label: "Gender Bender(TS)", value: "gender-benderts" },
+        { label: "Gender Bender (TS)", value: "gender-benderts" },
+        { label: "TS (Gender Bender)", value: "ts" },
         { label: "Harem", value: "harem" },
         { label: "Healing", value: "healing" },
         { label: "Hero Party", value: "hero-party" },
@@ -168,32 +143,6 @@ class KariStudio implements Plugin.PluginBase {
       return novels;
     }
 
-    const order = filters.order.value;
-
-    if (order.startsWith("ranking-")) {
-      if (pageNo > 1) return []; // Ranking page has no pagination
-      const rankingSort = order.replace("ranking-", "");
-      const url = `${this.site}/ranking?sort=${rankingSort}`;
-      const body = await fetchText(url);
-      const $ = loadCheerio(body);
-
-      const novels: Plugin.NovelItem[] = [];
-      $(".ranking-novel-item").each((i, el) => {
-        const novelUrl = $(el).find("a").attr("href");
-        if (!novelUrl) return;
-
-        const novelName = $(el).find(".ranking-novel-item-title").text().trim();
-        const novelCover = $(el).find(".ranking-novel-item-cover").attr("src");
-
-        novels.push({
-          name: novelName,
-          path: new URL(novelUrl).pathname,
-          cover: novelCover,
-        });
-      });
-      return novels;
-    }
-
     let url = `${this.site}/novels/`;
     if (pageNo > 1) {
       url += `page/${pageNo}/`;
@@ -201,12 +150,12 @@ class KariStudio implements Plugin.PluginBase {
 
     const params = new URLSearchParams();
     if (filters.order.value) params.append("sort", filters.order.value);
-    if (filters.type.value) params.append("type", filters.type.value);
-    if (filters.language.value) params.append("language", filters.language.value);
     if (filters.status.value) params.append("status", filters.status.value);
     if (filters.tag.value) params.append("tag", filters.tag.value);
 
-    url += "?" + params.toString();
+    if (params.toString()) {
+        url += "?" + params.toString();
+    }
 
     const body = await fetchText(url);
     const $ = loadCheerio(body);
@@ -288,13 +237,15 @@ class KariStudio implements Plugin.PluginBase {
 
     // Remove premium/login prompts
     $(".mycred-sell-this-wrapper").remove();
+    
+    const chapterContent = $(".chapter-content");
 
-    const chapterText = $("p.chapter_content")
-      .map((i, el) => `<p>${$(el).html()}</p>`)
-      .get()
-      .join("");
+    // Remove ads and other unwanted elements that might be injected.
+    chapterContent.find("div[class*='code-block'], div[id*='ezoic']").remove();
 
-    return chapterText;
+    const chapterText = chapterContent.html();
+
+    return chapterText || "";
   }
 
   async searchNovels(
