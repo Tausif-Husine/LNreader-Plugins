@@ -41,7 +41,7 @@ class MyNovels implements Plugin.PluginBase {
 
       novels.push({
         name: loadedCheerio(ele).find('div.title').text().trim(),
-        path: novelPath.replace(/^\//, ''), // Use relative path
+        path: novelPath.replace(/^\//, ''),
         cover: loadedCheerio(ele).find('img').attr('src')
           ? this.site + loadedCheerio(ele).find('img').attr('src')
           : defaultCover,
@@ -57,7 +57,7 @@ class MyNovels implements Plugin.PluginBase {
     const loadedCheerio = parseHTML(body);
 
     const novel: Plugin.SourceNovel = {
-      path: novelPath, // Use relative path
+      path: novelPath,
       name: loadedCheerio('h1').text() || 'Untitled',
       cover: this.site + loadedCheerio('.poster > img').attr('src'),
       summary: loadedCheerio('section.text-info.section > p').text(),
@@ -92,32 +92,37 @@ class MyNovels implements Plugin.PluginBase {
     else if (status === 'releasing' || translation === 'ongoing') novel.status = NovelStatus.Ongoing;
     else if (status === 'completed' && translation === 'completed') novel.status = NovelStatus.Completed;
 
-    const hideLocked = this.getHideLockedValue();
     const csrftoken = body.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
     const bookId = body.match(/const OBJECT_BY_COMMENT = ([0-9]+)/)?.[1];
     const totalPages = loadedCheerio('#select-pagination-chapter > option').length;
 
     if (!csrftoken || !bookId || totalPages === 0) {
-      return novel;
-    }
-    
-    const chapterPagePromises: Promise<string>[] = [];
-    for (let i = 1; i <= totalPages; i++) {
-        const pageNum = totalPages - i + 1;
-        const chaptersUrl = `${this.site}/book/ajax/chapter-pagination?csrfmiddlewaretoken=${csrftoken}&book_id=${bookId}&page=${pageNum}`;
-        chapterPagePromises.push(
-            fetchApi(chaptersUrl, {
-                headers: { 'Referer': novelUrl, 'X-Requested-With': 'XMLHttpRequest' },
-            }).then(r => r.json()).then(json => json.html)
-        );
+      return novel; // Return novel with empty chapters if we can't fetch them
     }
 
-    const chapterPagesHtml = await Promise.all(chapterPagePromises);
+    const hideLocked = this.getHideLockedValue();
     const allChapters: Plugin.ChapterItem[] = [];
+    const BATCH_SIZE = 5;
 
-    for (const chaptersRaw of chapterPagesHtml) {
-        const $chapters = parseHTML('<html>' + chaptersRaw + '</html>');
-        $chapters('a').each((idx, ele) => {
+    for (let i = 1; i <= totalPages; i += BATCH_SIZE) {
+      const batchPromises = [];
+      for (let j = i; j < i + BATCH_SIZE && j <= totalPages; j++) {
+        const pageNum = totalPages - j + 1; // Site pagination is reversed
+        const chaptersUrl = `${this.site}/book/ajax/chapter-pagination?csrfmiddlewaretoken=${csrftoken}&book_id=${bookId}&page=${pageNum}`;
+        batchPromises.push(
+          fetchApi(chaptersUrl, {
+            headers: { 'Referer': novelUrl, 'X-Requested-With': 'XMLHttpRequest' },
+          }).then(r => r.json()).then(json => json.html)
+        );
+      }
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled' && result.value) {
+          const chaptersRaw = result.value;
+          const $chapters = parseHTML('<html>' + chaptersRaw + '</html>');
+          $chapters('a').each((idx, ele) => {
             const isLocked = !!$chapters(ele)('.cost').text().trim();
             if (hideLocked && isLocked) return;
 
@@ -126,15 +131,17 @@ class MyNovels implements Plugin.PluginBase {
             
             let releaseTime;
             try {
-                releaseTime = dayjs($chapters(ele)('.date').text().trim(), 'DD.MM.YYYY').toISOString();
-            } catch (e) { /* ignore */ }
+              releaseTime = dayjs($chapters(ele)('.date').text().trim(), 'DD.MM.YYYY').toISOString();
+            } catch (e) { /* ignore date parsing errors */ }
 
             allChapters.push({
-                name: isLocked ? '🔒 ' + $chapters(ele)('.title').text().trim() : $chapters(ele)('.title').text().trim(),
-                path: chapterPath.replace(/^\//, ''), // Use relative path
-                releaseTime: releaseTime,
+              name: isLocked ? '🔒 ' + $chapters(ele)('.title').text().trim() : $chapters(ele)('.title').text().trim(),
+              path: chapterPath.replace(/^\//, ''),
+              releaseTime: releaseTime,
             });
-        });
+          });
+        }
+      }
     }
 
     novel.chapters = allChapters.reverse();
@@ -145,11 +152,12 @@ class MyNovels implements Plugin.PluginBase {
     const chapterUrl = this.site + chapterPath;
     const rawBody = await fetchApi(chapterUrl).then(r => r.text());
 
-    const csrftoken = rawBody.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
     const chapterId = rawBody.match(/const CHAPTER_ID = "([0-9]+)/)?.[1];
 
-    if (!csrftoken || !chapterId) {
-        throw new Error('Chapter is locked or requires a login.');
+    if (!chapterId) {
+      const isLocked = !!rawBody.match(/chapter is locked/i);
+      if (isLocked) throw new Error('Chapter is locked. You may need to log in via WebView and purchase it.');
+      throw new Error('Could not find chapter content.');
     }
 
     let className: string;
@@ -183,7 +191,7 @@ class MyNovels implements Plugin.PluginBase {
 
       novels.push({
         name: loadedCheerio(ele).find('div.title').text().trim(),
-        path: novelPath.replace(/^\//, ''), // Use relative path
+        path: novelPath.replace(/^\//, ''),
         cover: loadedCheerio(ele).find('img').attr('src')
             ? this.site + loadedCheerio(ele).find('img').attr('src')
             : defaultCover,
