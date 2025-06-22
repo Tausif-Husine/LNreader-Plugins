@@ -160,14 +160,14 @@ class MzNovelsPlugin implements Plugin.PluginBase {
     }
 
     const areFiltersSet =
-      (filters.genres.value.included && filters.genres.value.included.length > 0) ||
-      (filters.genres.value.excluded && filters.genres.value.excluded.length > 0) ||
-      filters.story_types.value.length > 0 ||
-      filters.story_origin.value !== 'all' ||
-      filters.status_filter.value !== 'all' ||
-      filters.genre_logic.value !== 'AND' ||
-      filters.story_type_logic.value !== 'OR' ||
-      (showLatestNovels ? false : filters.sort_by.value !== 'date');
+      filters.genres?.value?.included?.length > 0 ||
+      filters.genres?.value?.excluded?.length > 0 ||
+      filters.story_types?.value?.length > 0 ||
+      filters.story_origin?.value !== 'all' ||
+      filters.status_filter?.value !== 'all' ||
+      filters.genre_logic?.value !== 'AND' ||
+      filters.story_type_logic?.value !== 'OR' ||
+      (showLatestNovels ? false : filters.sort_by?.value !== 'date');
 
     if (!areFiltersSet && pageNo === 1 && !showLatestNovels) {
       const result = await fetchApi(this.site, this.getRequestInit());
@@ -197,13 +197,13 @@ class MzNovelsPlugin implements Plugin.PluginBase {
     url.searchParams.set('genre_logic', filters.genre_logic.value);
     url.searchParams.set('story_type_logic', filters.story_type_logic.value);
 
-    filters.genres.value.included.forEach(val =>
+    filters.genres.value?.included?.forEach(val =>
       url.searchParams.append('genres', val),
     );
-    filters.genres.value.excluded.forEach(val =>
+    filters.genres.value?.excluded?.forEach(val =>
       url.searchParams.append('exclude_genres', val),
     );
-    filters.story_types.value.forEach(val =>
+    filters.story_types.value?.forEach(val =>
       url.searchParams.append('story_types', val),
     );
 
