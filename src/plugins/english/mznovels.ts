@@ -3,7 +3,6 @@ import { Plugin } from '@typings/plugin';
 import { Filters, FilterTypes } from '@libs/filterInputs';
 import { load as loadCheerio, CheerioAPI } from 'cheerio';
 import { NovelStatus } from '@libs/novelStatus';
-import { storage } from '@libs/storage';
 
 class MzNovelsPlugin implements Plugin.PluginBase {
   id = 'mznovels';
@@ -12,35 +11,21 @@ class MzNovelsPlugin implements Plugin.PluginBase {
   site = 'https://mznovels.com';
   version = '1.0.0';
 
-  customUserAgent: string;
-  pluginSettings: Plugin.PluginSettings;
-
-  constructor() {
-    this.customUserAgent = storage.get('mznovels_user_agent') || '';
-    this.pluginSettings = {
-      customUserAgent: {
-        label: 'Custom User-Agent (leave empty for default)',
-        value: this.customUserAgent,
-        type: 'TextInput',
-      },
-    };
-  }
+  customUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   private getRequestInit(): RequestInit {
-    if (this.customUserAgent) {
-      return {
-        headers: {
-          'User-Agent': this.customUserAgent,
-        },
-      };
-    }
-    return {};
+    return {
+      headers: {
+        'User-Agent': this.customUserAgent,
+      },
+    };
   }
 
   filters: Filters = {
     sort_by: {
       label: 'Sort By',
-      value: 'date',
+      value: 'views', // Changed default to 'views'
       type: FilterTypes.Picker,
       options: [
         { label: 'Relevance', value: 'relevance' },
@@ -157,35 +142,7 @@ class MzNovelsPlugin implements Plugin.PluginBase {
   ): Promise<Plugin.NovelItem[]> {
     if (showLatestNovels) {
       filters.sort_by.value = 'date';
-    }
-
-    const areFiltersSet =
-      filters.genres?.value?.included?.length > 0 ||
-      filters.genres?.value?.excluded?.length > 0 ||
-      filters.story_types?.value?.length > 0 ||
-      filters.story_origin?.value !== 'all' ||
-      filters.status_filter?.value !== 'all' ||
-      filters.genre_logic?.value !== 'AND' ||
-      filters.story_type_logic?.value !== 'OR' ||
-      (showLatestNovels ? false : filters.sort_by?.value !== 'date');
-
-    if (!areFiltersSet && pageNo === 1 && !showLatestNovels) {
-      const result = await fetchApi(this.site, this.getRequestInit());
-      const body = await result.text();
-      const $ = loadCheerio(body);
-      const novels: Plugin.NovelItem[] = [];
-      $('div.novel-slide').each((i, el) => {
-        const novelPath = $(el).find('.title-info-v1 > a').attr('href');
-        if (novelPath) {
-          const novelName = $(el).find('.title-info-v1 > a > h3').text().trim();
-          let novelCover = $(el).find('.popular_title_image img').attr('src');
-          if (novelCover && !novelCover.startsWith('http')) {
-            novelCover = this.site + novelCover;
-          }
-          novels.push({ name: novelName, path: novelPath, cover: novelCover });
-        }
-      });
-      return novels;
+      filters.sort_order.value = 'desc';
     }
 
     const url = new URL(this.site + '/advanced-search/');
