@@ -9,56 +9,51 @@ import { NovelStatus } from '@libs/novelStatus';
 class MyNovels implements Plugin.PagePlugin {
   id = 'mynovels';
   name = 'MyNovels';
-  version = '1.0.0';
   icon = 'src/en/mynovels/icon.png';
-  site = 'http://mynovels.net';
-  
+  site = 'https://mynovels.net/';
+  version = '1.0.0';
+
   webStorageUtilized = true;
 
-  hideLocked = storage.get('hideLocked');
   pluginSettings = {
     hideLocked: {
-      value: '',
+      value: storage.get('hideLocked') || false,
       label: 'Hide locked chapters',
       type: 'Switch',
+      description: 'Hides chapters that require payment to read. Requires a refresh.',
     },
   };
 
+  private getHideLockedValue(): boolean {
+    const setting = this.pluginSettings?.hideLocked.value;
+    return typeof setting === 'boolean' ? setting : false;
+  }
+
   async popularNovels(page: number): Promise<Plugin.NovelItem[]> {
     const url = `${this.site}catalog/?ordering=popularity&page=${page}`;
-
     const body = await fetchApi(url).then(r => r.text());
-
     const loadedCheerio = parseHTML(body);
 
     const novels: Plugin.NovelItem[] = [];
-
     loadedCheerio('a.item').each((idx, ele) => {
-      const novelName = loadedCheerio(ele).find('div.title').text().trim();
-      const novelUrl = ele.attribs.href;
-      const bareNovelCover = loadedCheerio(ele).find('img').attr('src');
-      const novelCover = bareNovelCover
-        ? this.site + bareNovelCover
-        : defaultCover;
-      if (!novelUrl) return;
+      const novelPath = loadedCheerio(ele).attr('href');
+      if (!novelPath) return;
 
-      const novel = {
-        name: novelName,
-        cover: novelCover ?? defaultCover,
-        path: novelUrl.replace('/', ''),
-      };
-
-      novels.push(novel);
+      novels.push({
+        name: loadedCheerio(ele).find('div.title').text().trim(),
+        path: novelPath.replace(/^\//, ''),
+        cover: loadedCheerio(ele).find('img').attr('src')
+          ? this.site + loadedCheerio(ele).find('img').attr('src')
+          : defaultCover,
+      });
     });
 
     return novels;
   }
 
-  async parseNovel(
-    novelPath: string,
-  ): Promise<Plugin.SourceNovel & { totalPages: number }> {
-    const body = await fetchApi(this.site + novelPath).then(r => r.text());
-
+  async parseNovel(novelPath: string): Promise<Plugin.SourceNovel & { totalPages: number }> {
+    const novelUrl = this.site + novelPath;
+    const body = await fetchApi(novelUrl).then(r => r.text());
     const loadedCheerio = parseHTML(body);
 
     const novel: Plugin.SourceNovel & { totalPages: number } = {
@@ -67,126 +62,103 @@ class MyNovels implements Plugin.PagePlugin {
       cover: this.site + loadedCheerio('.poster > img').attr('src'),
       summary: loadedCheerio('section.text-info.section > p').text(),
       totalPages: loadedCheerio('#select-pagination-chapter > option').length,
-      chapters: [],
+      chapters: [], // Chapters will be loaded by parsePage
     };
-
+    
+    // Parse novel metadata
     const info = loadedCheerio('div.mini-info > .item').toArray();
-    let status = '';
-    let translation = '';
+    let status = '', translation = '';
     for (const child of info) {
-      const type = loadedCheerio(child).find('.sub-header').text().trim();
-      if (type === 'Status') {
-        status = loadedCheerio(child).find('div.info').text().trim();
-      }
-      if (type === 'Translation') {
-        translation = loadedCheerio(child).find('div.info').text().trim();
-      }
-      if (type === 'Author') {
-        novel.author = loadedCheerio(child).find('div.info').text().trim();
-      }
-      if (type === 'Genres') {
-        novel.genres = loadedCheerio(child)
-          .find('div.info > a')
-          .map((i, el) => loadedCheerio(el).text())
-          .toArray()
-          .join(', ');
-      }
+        const type = loadedCheerio(child).find('.sub-header').text().trim();
+        switch (type) {
+            case 'Status': status = loadedCheerio(child).find('div.info').text().trim(); break;
+            case 'Translation': translation = loadedCheerio(child).find('div.info').text().trim(); break;
+            case 'Author': novel.author = loadedCheerio(child).find('div.info').text().trim(); break;
+            case 'Genres':
+                novel.genres = loadedCheerio(child).find('div.info > a').map((i, el) => loadedCheerio(el).text()).toArray().join(', ');
+                break;
+        }
     }
+
     if (status === 'cancelled') novel.status = NovelStatus.Cancelled;
-    else if (status === 'releasing' || translation === 'ongoing')
-      novel.status = NovelStatus.Ongoing;
-    else if (status === 'completed' && translation === 'completed')
-      novel.status = NovelStatus.Completed;
+    else if (status === 'releasing' || translation === 'ongoing') novel.status = NovelStatus.Ongoing;
+    else if (status === 'completed' && translation === 'completed') novel.status = NovelStatus.Completed;
 
     return novel;
   }
 
   async parsePage(novelPath: string, page: string): Promise<Plugin.SourcePage> {
-    const rawBody = await fetchApi(this.site + novelPath).then(r => r.text());
-    const csrftoken = rawBody?.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
-    const bookId = rawBody?.match(/const OBJECT_BY_COMMENT = ([0-9]+)/)?.[1];
-    const totalPages = parseInt(
-      rawBody
-        ?.match(/<option value="([0-9]+)"/g)
-        ?.at(-1)
-        ?.match(/([0-9]+)/)?.[1] ?? '1',
-    );
+    const novelUrl = this.site + novelPath;
+    const rawBody = await fetchApi(novelUrl).then(r => r.text());
+    
+    const csrftoken = rawBody.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
+    const bookId = rawBody.match(/const OBJECT_BY_COMMENT = ([0-9]+)/)?.[1];
+    const totalPages = parseHTML(rawBody)('#select-pagination-chapter > option').length;
+    
+    if (!csrftoken || !bookId) {
+        throw new Error("Could not fetch chapters. The site's structure might have changed.");
+    }
+    
+    const pageToFetch = totalPages - parseInt(page) + 1;
 
     const chaptersRaw = await fetchApi(
-      `${this.site}/book/ajax/chapter-pagination?csrfmiddlewaretoken=${csrftoken}&book_id=${bookId}&page=${totalPages - parseInt(page) + 1}`,
-      {
-        headers: {
-          'Host': this.site.replace('https://', '').replace('/', ''),
-          'Referer': this.site + novelPath,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      },
-    )
-      .then(r => r.json())
-      .then(r => r.html);
+      `${this.site}/book/ajax/chapter-pagination?csrfmiddlewaretoken=${csrftoken}&book_id=${bookId}&page=${pageToFetch}`,
+      { headers: { 'Referer': novelUrl, 'X-Requested-With': 'XMLHttpRequest' } },
+    ).then(r => r.json()).then(r => r.html);
 
-    const chapter: Plugin.ChapterItem[] = [];
+    const chapters: Plugin.ChapterItem[] = [];
+    const hideLocked = this.getHideLockedValue();
 
     parseHTML('<html>' + chaptersRaw + '</html>')('a').each((idx, ele) => {
-      const title = parseHTML(ele)('.title').text().trim();
       const isLocked = !!parseHTML(ele)('.cost').text().trim();
-      if (this.hideLocked && isLocked) return;
+      if (hideLocked && isLocked) return;
 
-      let date;
+      const chapterPath = parseHTML(ele).attr('href');
+      if (!chapterPath) return;
+
+      let releaseTime;
       try {
-        date = dayjs(
-          parseHTML(ele)('.date').text().trim(),
-          'DD.MM.YYYY',
-        ).toISOString();
-      } catch (error) {}
+        releaseTime = dayjs(parseHTML(ele)('.date').text().trim(), 'DD.MM.YYYY').toISOString();
+      } catch (error) { /* ignore */ }
 
-      const chapterName = isLocked ? '🔒 ' + title : title;
-      const chapterUrl = ele.attribs.href;
-      chapter.push({
-        name: chapterName,
-        path: chapterUrl,
-        page: page,
-        releaseTime: date,
+      chapters.push({
+        name: isLocked ? '🔒 ' + parseHTML(ele)('.title').text().trim() : parseHTML(ele)('.title').text().trim(),
+        path: chapterPath.replace(/^\//, ''),
+        releaseTime: releaseTime,
+        page: page, // Set the page number for the app
       });
     });
 
-    const chapters = chapter.reverse();
-    return { chapters };
+    return { chapters: chapters.reverse() };
   }
 
   async parseChapter(chapterPath: string): Promise<string> {
-    const rawBody = await fetchApi(this.site + chapterPath).then(r => {
-      const res = r.text();
-      return res;
-    });
+    const chapterUrl = this.site + chapterPath;
+    const rawBody = await fetchApi(chapterUrl).then(r => r.text());
 
-    const csrftoken = rawBody?.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
-    const chapterId = rawBody?.match(/const CHAPTER_ID = "([0-9]+)/)?.[1];
+    const chapterId = rawBody.match(/const CHAPTER_ID = "([0-9]+)/)?.[1];
+
+    if (!chapterId) {
+        if (rawBody.includes("chapter is locked")) {
+            throw new Error('Chapter is locked. You may need to log in via WebView and purchase it.');
+        }
+        throw new Error('Could not find chapter content.');
+    }
 
     let className;
     const body = await fetchApi(
-      this.site + 'book/ajax/read-chapter/' + chapterId,
-      {
-        method: 'GET',
-        headers: {
-          Cookie: 'csrftoken=' + csrftoken,
-          Referer: this.site + chapterPath,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      },
+      `${this.site}book/ajax/read-chapter/${chapterId}`,
+      { headers: { 'Referer': chapterUrl, 'X-Requested-With': 'XMLHttpRequest' } },
     ).then(async r => {
       const res = await r.json();
+      if(res.error) throw new Error(res.error);
       className = res.class;
       return res.content;
     });
 
     const loadedCheerio = parseHTML(body);
     const chapterText = loadedCheerio('.' + className).html() || '';
-
-    return chapterText.replace(
-      /class="advertisment"/g,
-      'style="display:none;"',
-    );
+    return chapterText.replace(/class="advertisment"/g, 'style="display:none;"');
   }
 
   async searchNovels(searchTerm: string): Promise<Plugin.NovelItem[]> {
@@ -195,23 +167,17 @@ class MyNovels implements Plugin.PagePlugin {
     const loadedCheerio = parseHTML(body);
 
     const novels: Plugin.NovelItem[] = [];
-
     loadedCheerio('a.item').each((idx, ele) => {
-      const novelName = loadedCheerio(ele).find('div.title').text().trim();
-      const novelUrl = ele.attribs.href;
-      const bareNovelCover = loadedCheerio(ele).find('img').attr('src');
-      const novelCover = bareNovelCover
-        ? this.site + bareNovelCover
-        : defaultCover;
-      if (!novelUrl) return;
+      const novelPath = loadedCheerio(ele).attr('href');
+      if (!novelPath) return;
 
-      const novel = {
-        name: novelName,
-        cover: novelCover ?? defaultCover,
-        path: novelUrl.replace('/', ''),
-      };
-
-      novels.push(novel);
+      novels.push({
+        name: loadedCheerio(ele).find('div.title').text().trim(),
+        path: novelPath.replace(/^\//, ''),
+        cover: loadedCheerio(ele).find('img').attr('src')
+            ? this.site + loadedCheerio(ele).find('img').attr('src')
+            : defaultCover,
+      });
     });
 
     return novels;
