@@ -11,7 +11,7 @@ class MyNovels implements Plugin.PagePlugin {
   name = 'MyNovels';
   version = '1.0.0';
   icon = 'src/en/mynoveld/icon.png';
-  site = 'https://mynovels.net/';
+  site = 'https://novelight.net/';
   webStorageUtilized = true;
 
   hideLocked = storage.get('hideLocked');
