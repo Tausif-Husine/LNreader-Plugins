@@ -61,8 +61,8 @@ class DarkStarTranslationsPlugin implements Plugin.PluginBase {
   id = 'darkstartranslations';
   name = 'DarkStar Translations';
   icon = 'src/en/darkstartranslations/icon.png';
-  site = 'https://darkstartranslations.com';
-  version = '1.0.2'; // Incremented patch version for new chapter fetching logic
+  site = 'https://brightnovels.com';
+  version = '1.0.3'; // Incremented patch version for new chapter fetching logic
 
   filters: Filters = {
     sortBy: {
