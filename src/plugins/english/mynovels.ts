@@ -9,7 +9,7 @@ import { NovelStatus } from '@libs/novelStatus';
 class MyNovels implements Plugin.PagePlugin {
   id = 'mynovels';
   name = 'MyNovels';
-  version = '1.0.0';
+  version = '1.0.1';
   icon = 'src/en/mynoveld/icon.png';
   site = 'https://mynovels.su/';
   webStorageUtilized = true;
@@ -185,12 +185,19 @@ class MyNovels implements Plugin.PagePlugin {
     }
 
     const loadedCheerio = parseHTML(body);
-    const chapterText = loadedCheerio('.' + className).html() || '';
+    const chapterElement = loadedCheerio('.' + className);
 
-    return chapterText.replace(
-      /class="advertisment"/g,
-      'style="display:none;"',
-    );
+    chapterElement.find('.advertisment').remove();
+
+    let chapterHtml = chapterElement.html() || '';
+
+    chapterHtml = chapterHtml.replace(/<br\s*\/?>/gi, '\n');
+
+    chapterHtml = chapterHtml.replace(/<\/p>/gi, '\n\n');
+
+    const chapterText = parseHTML(chapterHtml).text().trim();
+
+    return chapterText;
   }
 
   async searchNovels(searchTerm: string): Promise<Plugin.NovelItem[]> {
