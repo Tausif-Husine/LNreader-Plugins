@@ -152,7 +152,7 @@ class MyNovels implements Plugin.PagePlugin {
     return { chapters };
   }
 
-  async parseChapter(chapterPath: string): Promise<string> {
+    async parseChapter(chapterPath: string): Promise<string> {
     const rawBody = await fetchApi(this.site + chapterPath).then(r => {
       const res = r.text();
       return res;
@@ -187,26 +187,30 @@ class MyNovels implements Plugin.PagePlugin {
     const loadedCheerio = parseHTML(body);
     const chapterElement = loadedCheerio('.' + className);
 
+    // Remove unwanted elements like ads and tracking buttons from the content
     chapterElement.find('.advertisment, button').remove();
 
-    const textBlocks: string[] = [];
+    const paragraphs: string[] = [];
 
-    chapterElement.children().each((i, el) => {
-        const $el = loadedCheerio(el);
+    // Find each direct child div within the main content element. Each one is a paragraph.
+    chapterElement.find('> div').each((i, el) => {
+        const paragraph = loadedCheerio(el);
 
-        let blockHtml = $el.html();
-        if (blockHtml === null) return; // Skip if element is empty
+        // Before getting the text, replace <br> tags with a newline character.
+        // This preserves line breaks within a single paragraph block.
+        paragraph.find('br').replaceWith('\n');
+        
+        // Get the text of this specific paragraph.
+        const text = paragraph.text();
 
-        blockHtml = blockHtml.replace(/<br\s*\/?>/gi, '\n');
-
-        const blockText = parseHTML(blockHtml).text().trim();
-
-        if (blockText) {
-            textBlocks.push(blockText);
+        // Only add the paragraph if it contains actual content.
+        if (text.trim()) {
+            paragraphs.push(text.trim());
         }
     });
-
-    return textBlocks.join('\n\n');
+    
+    // Join all the collected paragraphs with double newlines to ensure proper spacing.
+    return paragraphs.join('\n\n');
   }
 
   async searchNovels(searchTerm: string): Promise<Plugin.NovelItem[]> {
