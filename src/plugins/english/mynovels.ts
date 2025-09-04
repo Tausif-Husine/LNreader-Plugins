@@ -152,7 +152,7 @@ class MyNovels implements Plugin.PagePlugin {
     return { chapters };
   }
 
-  async parseChapter(chapterPath: string): Promise<string> {
+ async parseChapter(chapterPath: string): Promise<string> {
   const rawBody = await fetchApi(this.site + chapterPath).then(r => {
     const res = r.text();
     return res;
@@ -186,25 +186,56 @@ class MyNovels implements Plugin.PagePlugin {
 
   const loadedCheerio = parseHTML(body);
   
-  // Process each div element separately to maintain paragraph breaks
-  const paragraphs: string[] = [];
+  // Process each element to maintain proper formatting and line breaks
+  const content: string[] = [];
   
-  loadedCheerio('.' + className + ' > div').each((index, element) => {
-    const text = loadedCheerio(element).text().trim();
+  loadedCheerio('.' + className).children().each((index, element) => {
+    const $el = loadedCheerio(element);
+    const tagName = element.tagName?.toLowerCase();
+    const text = $el.text().trim();
+    
+    // Skip advertisement elements
+    if ($el.hasClass('advertisment') || $el.find('.advertisment').length > 0) {
+      return;
+    }
+    
+    // Skip button elements (like "Novelight" buttons)
+    if (tagName === 'button') {
+      return;
+    }
+    
     if (text) {
-      paragraphs.push(`<p>${text}</p>`);
+      // Handle different types of content
+      if (text === '***') {
+        // Scene breaks - add extra spacing
+        content.push('<br><hr><br>');
+      } else if (text === '…' || text === '……') {
+        // Ellipsis - treat as separate paragraph but with less spacing
+        content.push(`<p class="ellipsis">${text}</p>`);
+      } else if (text.startsWith('[') && text.endsWith(']')) {
+        // System messages or thoughts - special formatting
+        content.push(`<p class="system-message"><em>${text}</em></p>`);
+      } else if (text.startsWith('"') && text.endsWith('"')) {
+        // Dialog - regular paragraph
+        content.push(`<p class="dialog">${text}</p>`);
+      } else {
+        // Regular paragraph
+        content.push(`<p>${text}</p>`);
+      }
+    } else if (tagName === 'div' && $el.children().length === 0) {
+      // Empty div - might be intentional spacing
+      content.push('<br>');
     }
   });
   
-  // Join paragraphs with line breaks for proper formatting
-  const chapterText = paragraphs.join('\n');
+  // Join content with proper spacing
+  const chapterText = content.join('\n');
 
   return chapterText.replace(
     /class="advertisment"/g,
     'style="display:none;"',
   );
 }
-
   async searchNovels(searchTerm: string): Promise<Plugin.NovelItem[]> {
     const url = `${this.site}catalog/?search=${encodeURIComponent(searchTerm)}`;
     const body = await fetchApi(url).then(r => r.text());
