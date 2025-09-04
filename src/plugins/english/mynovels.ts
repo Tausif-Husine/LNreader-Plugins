@@ -152,66 +152,58 @@ class MyNovels implements Plugin.PagePlugin {
     return { chapters };
   }
 
-    async parseChapter(chapterPath: string): Promise<string> {
-    const rawBody = await fetchApi(this.site + chapterPath).then(r => {
-      const res = r.text();
-      return res;
-    });
+  async parseChapter(chapterPath: string): Promise<string> {
+  const rawBody = await fetchApi(this.site + chapterPath).then(r => {
+    const res = r.text();
+    return res;
+  });
 
-    const csrftoken = rawBody?.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
-    const chapterId = rawBody?.match(/const CHAPTER_ID = "([0-9]+)/)?.[1];
+  const csrftoken = rawBody?.match(/window\.CSRF_TOKEN = "([^"]+)"/)?.[1];
+  const chapterId = rawBody?.match(/const CHAPTER_ID = "([0-9]+)/)?.[1];
 
-    let className;
-    const body = await fetchApi(
-      this.site + 'book/ajax/read-chapter/' + chapterId,
-      {
-        method: 'GET',
-        headers: {
-          Referer: this.site + chapterPath,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
+  let className;
+  const body = await fetchApi(
+    this.site + 'book/ajax/read-chapter/' + chapterId,
+    {
+      method: 'GET',
+      headers: {
+        Referer: this.site + chapterPath,
+        'X-Requested-With': 'XMLHttpRequest',
       },
-    ).then(async r => {
-      const res = await r.json();
-      if (res.error) {
-        throw new Error(res.error);
-      }
-      className = res.class;
-      return res.content;
-    });
-
-    if (!body) {
-        throw new Error('Chapter is locked or unavailable. Try logging in via WebView.');
+    },
+  ).then(async r => {
+    const res = await r.json();
+    if (res.error) {
+      throw new Error(res.error);
     }
+    className = res.class;
+    return res.content;
+  });
 
-    const loadedCheerio = parseHTML(body);
-    const chapterElement = loadedCheerio('.' + className);
-
-    // Remove unwanted elements like ads and tracking buttons from the content
-    chapterElement.find('.advertisment, button').remove();
-
-    const paragraphs: string[] = [];
-
-    // Find each direct child div within the main content element. Each one is a paragraph.
-    chapterElement.find('> div').each((i, el) => {
-        const paragraph = loadedCheerio(el);
-
-        // Before getting the text, replace <br> tags with a newline character.
-        // This preserves line breaks within a single paragraph block.
-        paragraph.find('br').replaceWith('\n');
-        
-        // Get the text of this specific paragraph.
-        const text = paragraph.text();
-
-        // Only add the paragraph if it contains actual content.
-        if (text.trim()) {
-            paragraphs.push(text.trim());
-        }
-    });
-    
-    // Join all the collected paragraphs with double newlines to ensure proper spacing.
-    return paragraphs.join('\n\n');
+  if (!body) {
+    throw new Error('Chapter is locked or unavailable. Try logging in via WebView.');
   }
+
+  const loadedCheerio = parseHTML(body);
+  
+  // Process each div element separately to maintain paragraph breaks
+  const paragraphs: string[] = [];
+  
+  loadedCheerio('.' + className + ' > div').each((index, element) => {
+    const text = loadedCheerio(element).text().trim();
+    if (text) {
+      paragraphs.push(`<p>${text}</p>`);
+    }
+  });
+  
+  // Join paragraphs with line breaks for proper formatting
+  const chapterText = paragraphs.join('\n');
+
+  return chapterText.replace(
+    /class="advertisment"/g,
+    'style="display:none;"',
+  );
+}
 
   async searchNovels(searchTerm: string): Promise<Plugin.NovelItem[]> {
     const url = `${this.site}catalog/?search=${encodeURIComponent(searchTerm)}`;
